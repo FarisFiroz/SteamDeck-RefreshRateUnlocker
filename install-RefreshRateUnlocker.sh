@@ -183,9 +183,10 @@ EOF
 ################################################################################
 ######################### continue with the install ############################
 ################################################################################
-# 
-mv /tmp/1RefreshRateUnlocker/RefreshRateUnlocker.sh /etc/systemd/system/RefreshRateUnlocker.sh
-mv /tmp/1RefreshRateUnlocker/* /var/lib/1RefreshRateUnlocker/*
+# Move files as necessary to the correct places
+mv /tmp/1RefreshRateUnlocker/refresh-rate-unlocker.service /etc/systemd/system/refresh-rate-unlocker.service
+mkdir /var/lib/1RefreshRateUnlocker/
+mv /tmp/1RefreshRateUnlocker/* /var/lib/1RefreshRateUnlocker/
 chmod +x /var/lib/1RefreshRateUnlocker/*.sh
 
 # start the service
@@ -194,5 +195,5 @@ systemctl enable --now refresh-rate-unlocker.service
 
 
 # create desktop icon for Refresh Rate Unlocker Toolbox
-ln -s /var/lib/1RefreshRateUnlocker/RefreshRateUnlocker-Toolbox.sh ~/Desktop/RefreshRateUnlocker-Toolbox
+ln -s /var/lib/1RefreshRateUnlocker/RefreshRateUnlocker-Toolbox.sh /home/deck/Desktop/RefreshRateUnlocker-Toolbox
 echo -e "$RED"Desktop icon for Refresh Rate Unlocker Toolbox has been created!
