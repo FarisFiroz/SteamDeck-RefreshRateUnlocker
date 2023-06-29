@@ -10,35 +10,11 @@ echo Discord user dan2wik for the idea on overclocking the display panel to 70Hz
 echo https://github.com/ryanrudolfoba/SteamDeck-RefreshRateUnlocker
 sleep 2
 
-# Password sanity check - make sure sudo password is already set by end user!
-
-if [ "$(passwd --status deck | tr -s " " | cut -d " " -f 2)" == "P" ]
+# Make sure ur running as root
+if [ "$USER" != "root" ]
 then
-	read -s -p "Please enter current sudo password: " current_password ; echo
-	echo Checking if the sudo password is correct.
-	echo -e "$current_password\n" | sudo -S -k ls &> /dev/null
-
-	if [ $? -eq 0 ]
-	then
-		echo -e "$GREEN"Sudo password is good!
-	else
-		echo -e "$RED"Sudo password is wrong! Re-run the script and make sure to enter the correct sudo password!
-		exit
-	fi
-else
-	echo -e "$RED"Sudo password is blank! Setup a sudo password first and then re-run script!
-	passwd
-	exit
-fi
-
-# sudo password is already set by the end user, all good let's go!
-echo -e "$current_password\n" | sudo -S ls &> /dev/null
-if [ $? -eq 0 ]
-then
-	echo -e "$GREEN"1st sanity check. So far so good!
-else
-	echo -e "$RED"Something went wrong on the 1st sanity check! Re-run script!
-	exit
+    echo "Please run this as root or with sudo"
+    exit 2
 fi
 
 ###### Main menu. Ask user for the preferred refresh rate limit
@@ -59,16 +35,16 @@ then
 	echo User pressed CANCEL / EXIT. Make no changes. Exiting immediately.
 	exit
 else
-	sudo steamos-readonly disable
+	steamos-readonly disable
 	echo Perform cleanup first.
-	sudo rm /bin/gamescope-session.backup &> /dev/null
+	rm /bin/gamescope-session.backup &> /dev/null
 	echo Backup existing gamescope-session.
-	sudo cp /bin/gamescope-session /bin/gamescope-session.backup
+	cp /bin/gamescope-session /bin/gamescope-session.backup
 	echo Patch the gamescope-session.
 	
 	# patch gamescope-session based on the user choice
-	sudo sed -i "s/STEAM_DISPLAY_REFRESH_LIMITS=..,../STEAM_DISPLAY_REFRESH_LIMITS=$Choice/g" /bin/gamescope-session
-	sudo steamos-readonly enable
+	sed -i "s/STEAM_DISPLAY_REFRESH_LIMITS=..,../STEAM_DISPLAY_REFRESH_LIMITS=$Choice/g" /bin/gamescope-session
+	steamos-readonly enable
 	grep STEAM_DISPLAY_REFRESH_LIMITS /bin/gamescope-session
 	echo -e "$GREEN"gamescope-session has been patched to use $Choice. Reboot Steam Deck for changes to take effect.
 fi
@@ -77,46 +53,45 @@ fi
 ################################ post install ###################################
 #################################################################################
 
-# create ~/1RefreshRateUnlocker and place the additional scripts in there
-mkdir ~/1RefreshRateUnlocker &> /dev/null
-rm -f ~/1RefreshRateUnlocker/* &> /dev/null
+# create /tmp/1RefreshRateUnlocker and place the additional scripts in there
+mkdir /tmp/1RefreshRateUnlocker &> /dev/null
 
 # RefreshRateUnlocker.sh - script that gets called by refresh-rate-unlocker.service on startup
-cat > ~/1RefreshRateUnlocker/RefreshRateUnlocker.sh << EOF
+cat > /tmp/1RefreshRateUnlocker/RefreshRateUnlocker.sh << EOF
 #!/bin/bash
 
-RefreshRateUnlockerStatus=/home/deck/1RefreshRateUnlocker/status.txt
+RefreshRateUnlockerLog=/var/log/RefreshRateUnlocker.log
 
-echo RefreshRateUnlocker > \$RefreshRateUnlockerStatus
-date >> \$RefreshRateUnlockerStatus
-cat /etc/os-release >> \$RefreshRateUnlockerStatus
+echo RefreshRateUnlocker > \$RefreshRateUnlockerLog
+date >> \$RefreshRateUnlockerLog
+cat /etc/os-release >> \$RefreshRateUnlockerLog
 
 # check gamescope file if it needs to be patched
 grep STEAM_DISPLAY_REFRESH_LIMITS=$Choice /bin/gamescope-session
 if [ \$? -eq 0 ]
-then	echo gamescope-session already patched, no action needed. >> \$RefreshRateUnlockerStatus
+then	echo gamescope-session already patched, no action needed. >> \$RefreshRateUnlockerLog
 else
-	echo gamescope-session needs to be patched! >> \$RefreshRateUnlockerStatus
-	sudo steamos-readonly disable >> \$RefreshRateUnlockerStatus
-	echo Backup existing gamescope-session. >> \$RefreshRateUnlockerStatus
-	sudo cp /bin/gamescope-session /bin/gamescope-session.backup
-	echo Patch the gamescope-session. >> \$RefreshRateUnlockerStatus
-	sudo sed -i "s/STEAM_DISPLAY_REFRESH_LIMITS=40,60/STEAM_DISPLAY_REFRESH_LIMITS=$Choice/g" /bin/gamescope-session
-	ls /bin/gamescope* >> \$RefreshRateUnlockerStatus
-	sudo steamos-readonly enable
+	echo gamescope-session needs to be patched! >> \$RefreshRateUnlockerLog
+	steamos-readonly disable >> \$RefreshRateUnlockerLog
+	echo Backup existing gamescope-session. >> \$RefreshRateUnlockerLog
+	cp /bin/gamescope-session /bin/gamescope-session.backup
+	echo Patch the gamescope-session. >> \$RefreshRateUnlockerLog
+	sed -i "s/STEAM_DISPLAY_REFRESH_LIMITS=40,60/STEAM_DISPLAY_REFRESH_LIMITS=$Choice/g" /bin/gamescope-session
+	ls /bin/gamescope* >> \$RefreshRateUnlockerLog
+	steamos-readonly enable
 fi
 EOF
 
 # refresh-rate-unlocker.service - systemd service that calls RefreshRateUnlocker.sh on startup
-cat > ~/1RefreshRateUnlocker/refresh-rate-unlocker.service << EOF
+cat > /tmp/1RefreshRateUnlocker/refresh-rate-unlocker.service << EOF
 
 [Unit]
-Description=Custom systemd service that unlocks custom refresh rates.
+Description= Custom systemd service that unlocks custom refresh rates for gamescope-session.
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c '/etc/systemd/system/RefreshRateUnlocker.sh'
+ExecStart=/bin/bash -c '/var/lib/1RefreshRateUnlocker/RefreshRateUnlocker.sh'
 
 [Install]
 WantedBy=multi-user.target
@@ -125,7 +100,7 @@ EOF
 ################################################################################
 ####################### Refresh Rate Unlocker Toolbox ##########################
 ################################################################################
-cat > ~/1RefreshRateUnlocker/RefreshRateUnlocker-Toolbox.sh << EOF
+cat > /tmp/1RefreshRateUnlocker/RefreshRateUnlocker-Toolbox.sh << EOF
 #!/bin/bash
 zenity --password --title "Password Authentication" | sudo -S ls &> /dev/null
 if [ \$? -ne 0 ]
@@ -158,7 +133,7 @@ then
 
 elif [ "\$Choice" == "Status" ]
 then
-	zenity --warning --title "Refresh Rate Unlocker Toolbox" --text "\$(fold -w 120 -s ~/1RefreshRateUnlocker/status.txt)" --width 400 --height 600
+	zenity --warning --title "Refresh Rate Unlocker Toolbox" --text "\$(fold -w 120 -s /var/log/RefreshRateUnlocker.log)" --width 400 --height 600
 
 elif [ "\$Choice" == "20,60" ] || [ "\$Choice" == "30,60" ] || [ "\$Choice" == "20,70" ] || [ "\$Choice" == "30,70" ] || [ "\$Choice" == "40,70" ]
 then
@@ -181,17 +156,22 @@ then
 	then	
 		sudo sed -i "s/STEAM_DISPLAY_REFRESH_LIMITS=..,../STEAM_DISPLAY_REFRESH_LIMITS=40,60/g" /bin/gamescope-session
 		echo gamescope-session is now using the default value 40,60.
+        else
+		echo Error: gamescope-session could not be reverted to the default value.
 	fi
-
+ 	sudo steamos-readonly enable
+ 
 	# delete systemd service
-	sudo systemctl stop refresh-rate-unlocker.service
+	sudo systemctl disable --now refresh-rate-unlocker.service
 	sudo rm /etc/systemd/system/refresh-rate-unlocker.service
- 	sudo rm /etc/systemd/system/RefreshRateUnlocker.sh
-	sudo systemctl daemon-reload
-	sudo steamos-readonly enable
+ 	sudo systemctl daemon-reload
 
+ 	# delete /var/lib/1RefreshRateUnlocker/
+ 	sudo rm -rf /var/lib/1RefreshRateUnlocker/
+	
 	rm -rf ~/1RefreshRateUnlocker
 	rm -rf ~/SteamDeck-RefreshRateUnlocker
+ 	rm -rf /tmp/1RefreshRateUnlocker/*
 	rm ~/Desktop/RefreshRateUnlocker-Toolbox
 
 	zenity --warning --title "Refresh Rate Unlocker Toolbox" --text "Uninstall complete! Reboot for changes to take effect!" --width 400 --height 75
@@ -203,17 +183,16 @@ EOF
 ################################################################################
 ######################### continue with the install ############################
 ################################################################################
-# copy the systemd script to a location owned by root to prevent local privilege escalation
-sudo steamos-readonly disable
-chmod +x ~/1RefreshRateUnlocker/*.sh
-sudo mv ~/1RefreshRateUnlocker/refresh-rate-unlocker.service /etc/systemd/system/refresh-rate-unlocker.service
-sudo mv ~/1RefreshRateUnlocker/RefreshRateUnlocker.sh /etc/systemd/system/RefreshRateUnlocker.sh
+# 
+mv /tmp/1RefreshRateUnlocker/RefreshRateUnlocker.sh /etc/systemd/system/RefreshRateUnlocker.sh
+mv /tmp/1RefreshRateUnlocker/* /var/lib/1RefreshRateUnlocker/*
+chmod +x /var/lib/1RefreshRateUnlocker/*.sh
 
 # start the service
-sudo systemctl daemon-reload
-sudo systemctl enable --now refresh-rate-unlocker.service
-sudo steamos-readonly enable
+systemctl daemon-reload
+systemctl enable --now refresh-rate-unlocker.service
+
 
 # create desktop icon for Refresh Rate Unlocker Toolbox
-ln -s ~/1RefreshRateUnlocker/RefreshRateUnlocker-Toolbox.sh ~/Desktop/RefreshRateUnlocker-Toolbox
+ln -s /var/lib/1RefreshRateUnlocker/RefreshRateUnlocker-Toolbox.sh ~/Desktop/RefreshRateUnlocker-Toolbox
 echo -e "$RED"Desktop icon for Refresh Rate Unlocker Toolbox has been created!
